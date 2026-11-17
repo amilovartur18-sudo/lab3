@@ -6,6 +6,433 @@
 сохранять каталог в JSON и полностью восстанавливать его из файла. Реализована
 обязательная часть задания. Дополнительные задания не включены.
 
+<a id="defense-examples"></a>
+
+## Примеры для защиты по каждому критерию
+
+Ниже идут все девять критериев из ведомости. У каждого есть запускаемый пример,
+ожидаемый результат и пояснение, что показать преподавателю.
+
+Выполняйте команды **из корня `lab3` с активированным виртуальным окружением**.
+Блоки `python - <<'PY' ... PY` целиком вставляются в терминал macOS/Linux.
+Каждый блок самостоятельный: переменные из предыдущего блока ему не нужны.
+Демонстрации читают `examples/catalog.json`, а файлы для проверки загрузки
+создают во временной папке. Исходный пример JSON не изменяется.
+
+### 1. dataclass и инварианты сущности — 12 баллов
+
+**Что доказываем:** деталь является `dataclass`, содержит все шесть полей,
+отклоняет пустое название и неправильный год при создании. Поля готовой
+детали нельзя обычным присваиванием изменить на некорректные.
+
+```bash
+python - <<'PY'
+from dataclasses import FrozenInstanceError, asdict, is_dataclass, replace
+from src.errors import InvalidPartError
+from src.part import AviationPart
+
+part = AviationPart(
+    item_id="0017", name="Лопатка турбины", category="Двигатель",
+    year=2024, manufacturer="Учебный завод", aircraft_model="Самолёт А",
+)
+print("dataclass:", is_dataclass(part))
+print("Поля:", ", ".join(asdict(part)))
+print("Строковый ID с ведущими нулями:", repr(part.item_id))
+for changes in ({"name": " "}, {"year": 1800}, {"year": "2024"}):
+    try:
+        replace(part, **changes)
+    except InvalidPartError as error:
+        print(type(error).__name__)
+try:
+    part.item_id = "OTHER"
+except FrozenInstanceError as error:
+    print(type(error).__name__)
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+dataclass: True
+Поля: item_id, name, category, year, manufacturer, aircraft_model
+Строковый ID с ведущими нулями: '0017'
+InvalidPartError
+InvalidPartError
+InvalidPartError
+FrozenInstanceError
+```
+
+**Где в коде:** [AviationPart и __post_init__](src/part.py),
+[границы года и перечень полей](src/constants.py).
+`replace` создаёт новый экземпляр и повторно запускает проверки конструктора.
+
+### 2. Добавление, получение, удаление — 16 баллов
+
+**Что доказываем:** `add` добавляет объект, `get` возвращает именно его;
+повторный ID запрещён, а после удаления ID больше не существует.
+Получение и удаление отсутствующей детали вызывают предметную ошибку.
+
+```bash
+python - <<'PY'
+from src.catalog import Catalog
+from src.errors import DuplicateIdError, ItemNotFoundError
+from src.storage import load_catalog
+
+source = Catalog()
+load_catalog(source, "examples/catalog.json")
+part = source.get("ENG-001")
+catalog = Catalog()
+catalog.add(part)
+print("После add:", len(catalog))
+print("get вернул тот же объект:", catalog.get("ENG-001") is part)
+try:
+    catalog.add(part)
+except DuplicateIdError as error:
+    print(type(error).__name__)
+catalog.remove("ENG-001")
+print("После remove:", len(catalog))
+for operation in (catalog.get, catalog.remove):
+    try:
+        operation("ENG-001")
+    except ItemNotFoundError as error:
+        print(type(error).__name__)
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+После add: 1
+get вернул тот же объект: True
+DuplicateIdError
+После remove: 0
+ItemNotFoundError
+ItemNotFoundError
+```
+
+**Где в коде:** [Catalog.add, get и remove](src/catalog.py).
+
+### 3. Поиск по категории и имени — 10 баллов
+
+**Что доказываем:** категория ищется точно, название — по подстроке без учёта
+регистра. Поиск без совпадений возвращает пустой результат. Результат поиска
+не позволяет удалить элементы из внутренней коллекции каталога.
+
+```bash
+python - <<'PY'
+from src.catalog import Catalog
+from src.storage import load_catalog
+
+catalog = Catalog()
+load_catalog(catalog, "examples/catalog.json")
+print("Категория:", [p.item_id for p in catalog.find_by_category("Двигатель")])
+result = catalog.find_by_name("ТУРБИНЫ")
+print("Название:", [p.item_id for p in result])
+print("Нет совпадений:", catalog.find_by_name("несуществующее название"))
+print("Результат — tuple:", isinstance(result, tuple))
+separate_list = list(result)
+separate_list.clear()
+print("После очистки отдельного списка:", len(catalog))
+print("Деталь осталась:", "ENG-001" in catalog)
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+Категория: ['ENG-001']
+Название: ['ENG-001']
+Нет совпадений: ()
+Результат — tuple: True
+После очистки отдельного списка: 2
+Деталь осталась: True
+```
+
+**Где в коде:** [find_by_category и find_by_name](src/catalog.py).
+За нечувствительность к регистру отвечает `casefold()`.
+
+### 4. Протоколы len, iter, contains — 8 баллов
+
+**Что доказываем:** каталог работает с `len`, `for`/`iter` и `in`.
+Порядок — порядок добавления, а не сортировка ID. Два перебора совпадают;
+удалённая и заново добавленная деталь переходит в конец.
+
+```bash
+python - <<'PY'
+from src.catalog import Catalog
+from src.storage import load_catalog
+
+catalog = Catalog()
+load_catalog(catalog, "examples/catalog.json")
+print("len:", len(catalog))
+print("Есть ID:", "ENG-001" in catalog)
+print("Нет ID:", "UNKNOWN" in catalog)
+first = [part.item_id for part in iter(catalog)]
+second = [part.item_id for part in catalog]
+print("Первый перебор:", first)
+print("Второй перебор:", second)
+print("Порядок совпадает:", first == second)
+part = catalog.get("ENG-001")
+catalog.remove("ENG-001")
+catalog.add(part)
+print("После повторного добавления:", [p.item_id for p in catalog])
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+len: 2
+Есть ID: True
+Нет ID: False
+Первый перебор: ['ENG-001', 'GEAR-002']
+Второй перебор: ['ENG-001', 'GEAR-002']
+Порядок совпадает: True
+После повторного добавления: ['GEAR-002', 'ENG-001']
+```
+
+**Где в коде:** [__len__, __iter__ и __contains__](src/catalog.py).
+
+### 5. Словарный индекс и согласованность — 9 баллов
+
+**Что доказываем:** детали действительно находятся в словаре по ID.
+Удаление обновляет доступ по ID, длину и результаты поиска. В проекте один
+словарь, поэтому отдельный список не может разойтись с индексом.
+
+Здесь `_items` читается только для демонстрации внутреннего устройства на
+защите. При обычной работе используется публичный API каталога.
+
+```bash
+python - <<'PY'
+from src.catalog import Catalog
+from src.errors import ItemNotFoundError
+from src.storage import load_catalog
+
+catalog = Catalog()
+load_catalog(catalog, "examples/catalog.json")
+print("Индекс — dict:", isinstance(catalog._items, dict))
+print("Ключи индекса:", list(catalog._items))
+print("get читает объект из словаря:", catalog.get("ENG-001") is catalog._items["ENG-001"])
+catalog.remove("ENG-001")
+print("ID присутствует:", "ENG-001" in catalog)
+print("Размер:", len(catalog))
+print("Поиск удалённой категории:", catalog.find_by_category("Двигатель"))
+print("Поиск удалённого названия:", catalog.find_by_name("турбины"))
+try:
+    catalog.get("ENG-001")
+except ItemNotFoundError as error:
+    print(type(error).__name__)
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+Индекс — dict: True
+Ключи индекса: ['ENG-001', 'GEAR-002']
+get читает объект из словаря: True
+ID присутствует: False
+Размер: 1
+Поиск удалённой категории: ()
+Поиск удалённого названия: ()
+ItemNotFoundError
+```
+
+**Что объяснить:** в [методе get](src/catalog.py) есть прямое обращение
+`return self._items[item_id]`, а цикла по объектам нет. Отсюда O(1) в среднем
+для поиска ID. Демонстрация поведения сама по себе не измеряет сложность:
+сложность обосновывается устройством словаря и реализацией метода.
+
+### 6. JSON save/load и версия формата — 15 баллов
+
+**Что доказываем:** сохраняются версия, все поля и порядок деталей;
+после загрузки каталог совпадает с исходным. Неизвестная версия отклоняется.
+
+```bash
+python - <<'PY'
+import json
+from dataclasses import asdict
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from src.catalog import Catalog
+from src.constants import FORMAT_VERSION
+from src.errors import UnsupportedVersionError
+from src.storage import load_catalog, save_catalog
+
+catalog = Catalog()
+load_catalog(catalog, "examples/catalog.json")
+with TemporaryDirectory() as folder:
+    path = Path(folder) / "round-trip.json"
+    save_catalog(catalog, path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    print("format_version:", document["format_version"])
+    print("Все поля записаны:", document["items"] == [asdict(p) for p in catalog])
+    restored = Catalog()
+    load_catalog(restored, path)
+    print("Каталоги совпали:", list(restored) == list(catalog))
+    print("Порядок:", [p.item_id for p in restored])
+    document["format_version"] = FORMAT_VERSION + 1
+    path.write_text(json.dumps(document), encoding="utf-8")
+    try:
+        load_catalog(restored, path)
+    except UnsupportedVersionError as error:
+        print(type(error).__name__)
+    print("После ошибки версии каталог сохранён:", list(restored) == list(catalog))
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+format_version: 1
+Все поля записаны: True
+Каталоги совпали: True
+Порядок: ['ENG-001', 'GEAR-002']
+UnsupportedVersionError
+После ошибки версии каталог сохранён: True
+```
+
+**Где в коде:** [save_catalog, parse_document и load_catalog](src/storage.py),
+[FORMAT_VERSION](src/constants.py).
+
+### 7. Иерархия исключений и атомарная загрузка — 10 баллов
+
+**Что доказываем:** все предметные ошибки наследуются от `CatalogError`.
+В документе первая новая деталь корректна, а **вторая повреждена**.
+После неудачной загрузки старая деталь остаётся тем же объектом, первая новая
+не добавляется. Отдельно демонстрируется ошибка синтаксиса JSON.
+
+```bash
+python - <<'PY'
+import json
+from dataclasses import asdict, replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from src.catalog import Catalog
+from src.constants import FORMAT_VERSION
+from src.errors import (
+    CatalogError, CatalogFileError, CorruptedFileError, DuplicateIdError,
+    InvalidPartError, ItemNotFoundError, UnsupportedVersionError,
+)
+from src.storage import load_catalog
+
+errors = (
+    InvalidPartError, DuplicateIdError, ItemNotFoundError,
+    UnsupportedVersionError, CorruptedFileError, CatalogFileError,
+)
+print("Все ошибки — CatalogError:", all(issubclass(e, CatalogError) for e in errors))
+source = Catalog()
+load_catalog(source, "examples/catalog.json")
+old = replace(source.get("ENG-001"), item_id="OLD")
+catalog = Catalog([old])
+before = list(catalog)
+good = asdict(replace(old, item_id="NEW-1"))
+bad = asdict(replace(old, item_id="NEW-2"))
+bad["year"] = "не число"
+with TemporaryDirectory() as folder:
+    path = Path(folder) / "damaged.json"
+    document = {"format_version": FORMAT_VERSION, "items": [good, bad]}
+    path.write_text(json.dumps(document), encoding="utf-8")
+    try:
+        load_catalog(catalog, path)
+    except CatalogError as error:
+        print("Повреждена вторая запись:", type(error).__name__)
+    print("Исходное состояние сохранено:", list(catalog) == before)
+    print("Старый объект тот же:", catalog.get("OLD") is old)
+    print("Первая новая деталь добавилась:", "NEW-1" in catalog)
+    path.write_text("{broken", encoding="utf-8")
+    try:
+        load_catalog(catalog, path)
+    except CatalogError as error:
+        print("Неверный синтаксис JSON:", type(error).__name__)
+    print("После синтаксической ошибки:", list(catalog) == before)
+PY
+```
+
+Ожидаемый вывод:
+
+```text
+Все ошибки — CatalogError: True
+Повреждена вторая запись: CorruptedFileError
+Исходное состояние сохранено: True
+Старый объект тот же: True
+Первая новая деталь добавилась: False
+Неверный синтаксис JSON: CorruptedFileError
+После синтаксической ошибки: True
+```
+
+**Где в коде:** [иерархия ошибок](src/errors.py), [загрузчик](src/storage.py)
+и [replace_all](src/catalog.py). Сначала проверяются новые данные и строится
+временный каталог, затем одной операцией заменяется `self._items`.
+Если раньше возникло исключение, до замены выполнение не доходит.
+
+### 8. Тестирование — 15 баллов
+
+**Что показываем:** тесты действительно выполняются и отдельно покрывают
+каждую группу из критериев. Команды можно запускать независимо:
+
+```bash
+python -m pytest -v tests/test_part.py
+python -m pytest -v tests/test_catalog.py
+python -m pytest -v tests/test_storage.py
+python -m pytest -v tests/test_main.py
+```
+
+- [test_part.py](tests/test_part.py): инварианты сущности, включая неверные
+  типы, пустые строки и границы года — группа на 3 балла.
+- [test_catalog.py](tests/test_catalog.py): операции и ошибки — группа на
+  4 балла; поиск и протоколы — группа на 3 балла.
+- [test_storage.py](tests/test_storage.py): JSON round trip и версии — группа
+  на 3 балла; атомарность загрузки — группа на 2 балла.
+- [test_main.py](tests/test_main.py): дополнительно проверяет сценарии CLI.
+
+Чтобы быстро показать именно повреждение второй записи:
+
+```bash
+python -m pytest -v tests/test_storage.py -k test_bad_second_record_is_atomic
+```
+
+Ожидается **18 passed**: шесть полей по три неверных значения.
+Полный запуск:
+
+```bash
+python -m pytest -q
+```
+
+Ожидается **101 passed**; длительность и оформление строки зависят от среды.
+Это число пройденных тестов, а не процент покрытия кода и не оценка за работу.
+
+### 9. README и защита — 5 баллов
+
+**Что показываем:** по README можно установить и запустить проект, найти
+контракт методов и воспроизвести каждый критерий. Для демонстрации готового
+приложения выполните:
+
+```bash
+python -m src.main --file examples/catalog.json list
+```
+
+Ожидаемый вывод:
+
+```text
+ENG-001 | Лопатка турбины | Двигатель | 2024 | Учебный завод | Учебный самолёт А
+GEAR-002 | Стойка шасси | Шасси | 2023 | Учебный завод | Учебный самолёт Б
+```
+
+Подготовьте объяснения для трёх заданий на защите:
+
+1. **Добавить проверяемое поле.** Порядок изменений описан в
+   [DEFENSE.md](DEFENSE.md#как-добавить-новое-проверяемое-поле): модель,
+   константы, CLI, JSON, примеры и тесты.
+2. **Объяснить сложность.** `get` использует ключ словаря — O(1) в среднем;
+   `find_by_name` просматривает все детали — O(n) при ограниченной длине строк.
+3. **Добавить тест частично повреждённого документа.** Пункт 7 демонстрирует
+   сценарий, а `test_bad_second_record_is_atomic` показывает его автоматическую
+   проверку. Можно расширить её новым ошибочным значением или ограничением поля.
+
+Пункты «Вычет за долг» и «Итого» в ведомости заполняет преподаватель;
+они не являются отдельными функциями программы.
+
 ## Структура проекта
 
 ```text
