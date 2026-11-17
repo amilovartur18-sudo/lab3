@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "items": [
+    {
+      "item_id": "ENG-001",
+      "name": "Лопатка турбины",
+      "category": "Двигатель",
+      "year": 2024,
+      "manufacturer": "Учебный завод",
+      "aircraft_model": "Учебный самолёт А"
+    },
+    {
+      "item_id": "GEAR-002",
+      "name": "Стойка шасси",
+      "category": "Шасси",
+      "year": 2023,
+      "manufacturer": "Учебный завод",
+      "aircraft_model": "Учебный самолёт Б"
+    }
+  ]
+}
