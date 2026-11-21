@@ -5,7 +5,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from src.catalog import Catalog
-from src.constants import DEFAULT_CATALOG_FILE
+from src.constants import ADD_COMMAND_EXAMPLE, DEFAULT_CATALOG_FILE
 from src.errors import CatalogError
 from src.part import AviationPart
 from src.storage import load_catalog, save_catalog
@@ -13,19 +13,43 @@ from src.storage import load_catalog, save_catalog
 
 def create_parser() -> argparse.ArgumentParser:
     """Описать команды и аргументы консольного приложения."""
-    parser = argparse.ArgumentParser(description="Каталог авиационных деталей")
-    parser.add_argument("--file", type=Path, default=Path(DEFAULT_CATALOG_FILE))
+    parser = argparse.ArgumentParser(
+        description="Каталог авиационных деталей",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            f"{ADD_COMMAND_EXAMPLE}\n\n"
+            "Просмотр созданного каталога:\n"
+            "  python -m src.main --file demo_catalog.json list"
+        ),
+    )
+    parser.add_argument(
+        "--file",
+        type=Path,
+        default=Path(DEFAULT_CATALOG_FILE),
+        help="Путь к JSON-каталогу (по умолчанию: %(default)s)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="Показать все детали")
     commands.add_parser("count", help="Показать количество деталей")
 
-    add_parser = commands.add_parser("add", help="Добавить деталь")
-    add_parser.add_argument("--id", dest="item_id", required=True)
-    add_parser.add_argument("--name", required=True)
-    add_parser.add_argument("--category", required=True)
-    add_parser.add_argument("--year", type=int, required=True)
-    add_parser.add_argument("--manufacturer", required=True)
-    add_parser.add_argument("--aircraft-model", required=True)
+    add_parser = commands.add_parser(
+        "add",
+        help="Добавить деталь",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=ADD_COMMAND_EXAMPLE,
+    )
+    add_parser.add_argument(
+        "--id", dest="item_id", required=True, help="Уникальный строковый ID детали"
+    )
+    add_parser.add_argument("--name", required=True, help="Название детали")
+    add_parser.add_argument("--category", required=True, help="Категория детали")
+    add_parser.add_argument("--year", type=int, required=True, help="Год выпуска")
+    add_parser.add_argument(
+        "--manufacturer", required=True, help="Производитель детали"
+    )
+    add_parser.add_argument(
+        "--aircraft-model", required=True, help="Совместимая модель самолёта"
+    )
 
     for command, help_text in (
         ("get", "Получить деталь"),
