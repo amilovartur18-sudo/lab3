@@ -705,23 +705,13 @@ lab3/
 
 Нужен Python 3.12 или новее. Выполняйте команды из папки `lab3`.
 
-Рекомендуемый способ через uv:
+Установка через uv:
 
 ```bash
 uv sync --locked
 source .venv/bin/activate
 ```
 
-Альтернативный способ через стандартный venv:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-В Windows PowerShell окружение активируется командой
-`.venv\Scripts\Activate.ps1`.
 У приложения нет внешних зависимостей во время выполнения. Инструменты
 разработки находятся в группе `dev`; версии зафиксированы в `uv.lock`.
 
